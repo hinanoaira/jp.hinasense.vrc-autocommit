@@ -1,0 +1,25 @@
+{
+  "name": "jp.hinasense.vrc-autocommit",
+  "id": "io.github.hinanoaira.jp.hinasense.vrc-autocommit.vpm",
+  "url": "https://hinanoaira.github.io/jp.hinasense.vrc-autocommit/vpm.json",
+  "author": "hinasense",
+  "packages": {
+    "jp.hinasense.vrc-autocommit": {
+      "versions": {
+        "1.0.0": {
+          "name": "jp.hinasense.vrc-autocommit",
+          "version": "1.0.0",
+          "displayName": "VRChat Git Auto Commit",
+          "description": "Automatically creates a git commit with a timestamp message (YYYYMMDDhhmm) when building VRChat avatars.",
+          "unity": "2022.3",
+          "author": {
+            "name": "hinasense"
+          },
+          "dependencies": {},
+          "zipSHA256": "71b9c755586579238b91eb896473825e5016545aec941efcd4c6c1f5de5ec5a3",
+          "url": "https://github.com/hinanoaira/jp.hinasense.vrc-autocommit/releases/download/v1.0.0/jp.hinasense.vrc-autocommit-1.0.0.zip"
+        }
+      }
+    }
+  }
+}

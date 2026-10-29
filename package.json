@@ -1,0 +1,12 @@
+{
+  "name": "jp.hinasense.vrc-autocommit",
+  "version": "1.0.0",
+  "displayName": "VRChat Git Auto Commit",
+  "description": "Automatically creates a git commit with a timestamp message (YYYYMMDDhhmm) when building VRChat avatars.",
+  "unity": "2022.3",
+  "author": {
+    "name": "hinasense"
+  },
+  "dependencies": {}
+}
+
