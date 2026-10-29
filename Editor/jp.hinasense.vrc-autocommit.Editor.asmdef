@@ -1,0 +1,19 @@
+{
+  "name": "jp.hinasense.vrc-autocommit.Editor",
+  "rootNamespace": "Hinasense.VRCAutoCommit.Editor",
+  "references": [
+    "VRC.SDK3A.Editor",
+    "VRC.SDKBase.Editor"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

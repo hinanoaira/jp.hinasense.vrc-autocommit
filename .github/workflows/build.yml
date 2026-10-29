@@ -1,0 +1,149 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+      - pre-*
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up zip
+        run: sudo apt-get update && sudo apt-get install -y zip jq curl
+
+      - name: Get name and version from package.json
+        id: get_info
+        run: |
+          NAME=$(jq -r .name package.json)
+          VERSION=$(jq -r .version package.json)
+          ZIPNAME="${NAME}-${VERSION}.zip"
+          UNITYPACKAGE_NAME="${NAME}-${VERSION}-installer.unitypackage"
+          REPO=$(jq -r .repo package.json)
+          echo "zipname=$ZIPNAME" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "name=$NAME" >> $GITHUB_OUTPUT
+          echo "unitypackage_name=$UNITYPACKAGE_NAME" >> $GITHUB_OUTPUT
+          echo "repo=$REPO" >> $GITHUB_OUTPUT
+
+      - name: Download unitypackage from API
+        run: |
+          curl -L "https://api.anatawa12.com/create-vpai/?name=${{ steps.get_info.outputs.unitypackage_name }}&repo=${{ steps.get_info.outputs.repo }}&package=${{ steps.get_info.outputs.name }}&version=${{ steps.get_info.outputs.version }}" -o "${{ steps.get_info.outputs.unitypackage_name }}"
+
+      - name: Zip workspace
+        run: |
+          zip -r ${{ steps.get_info.outputs.zipname }} . -x '*.git*' '*.github*' '${{ steps.get_info.outputs.zipname }}' '${{ steps.get_info.outputs.unitypackage_name }}'
+
+      - name: Force update tag to current commit
+        run: |
+          TAG_NAME="v${{ steps.get_info.outputs.version }}"
+          # 既存の同名タグを削除（ローカル・リモート両方）
+          git tag -d "$TAG_NAME" 2>/dev/null || true
+          git push --delete origin "$TAG_NAME" 2>/dev/null || true
+          # HEADに新しくタグを作成
+          git tag "$TAG_NAME"
+          git push origin "$TAG_NAME"
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.get_info.outputs.version }}
+          name: Release v${{ steps.get_info.outputs.version }}
+          draft: false
+          prerelease: ${{ github.ref != 'refs/heads/main' }}
+          files: |
+            ${{ steps.get_info.outputs.zipname }}
+            ${{ steps.get_info.outputs.unitypackage_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  generate_vpm_json:
+    runs-on: ubuntu-latest
+    needs: release
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/pre-')
+    steps:
+      - name: Checkout repository (for .git)
+        uses: actions/checkout@v4
+
+      - name: Checkout or create gh-pages branch
+        run: |
+          git fetch origin
+          if git show-ref --quiet refs/remotes/origin/gh-pages; then
+            git checkout gh-pages || git checkout -b gh-pages origin/gh-pages
+          else
+            git checkout --orphan gh-pages
+            git rm -rf . || true
+            git clean -fdx || true
+          fi
+
+      - name: Clean gh-pages branch
+        run: |
+          git rm -rf . --ignore-unmatch --exclude=vpm.json || true
+          git clean -fdx || true
+
+      - name: Fetch package.json from source branch
+        run: |
+          git fetch origin ${{ github.ref }}:${{ github.ref }}
+          git checkout ${{ github.ref }} -- package.json
+
+      - name: Download latest release zip
+        run: |
+          NAME=$(jq -r .name package.json)
+          VERSION=$(jq -r .version package.json)
+          ZIPNAME="${NAME}-${VERSION}.zip"
+          ZIPURL="https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}/${ZIPNAME}"
+          curl -L "$ZIPURL" -o "$ZIPNAME"
+
+      - name: Generate vpm.json
+        run: |
+          NAME=$(jq -r .name package.json)
+          VERSION=$(jq -r .version package.json)
+          ZIPNAME="${NAME}-${VERSION}.zip"
+          ZIPURL="https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}/${ZIPNAME}"
+          REPOURL="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/vpm.json"
+          AUTHOR_NAME=$(jq -r .author.name package.json)
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+
+          # id生成: github pagesのドメインを逆順+リポジトリ名+vpm
+          PAGES_DOMAIN=$(echo "$REPOURL" | awk -F/ '{print $3}')
+          DOMAIN_PARTS=($(echo $PAGES_DOMAIN | tr '.' ' '))
+          DOMAIN_REVERSED=""
+          for (( idx=${#DOMAIN_PARTS[@]}-1 ; idx>=0 ; idx-- )) ; do DOMAIN_REVERSED+="${DOMAIN_PARTS[idx]}." ; done
+          DOMAIN_REVERSED=${DOMAIN_REVERSED%?}
+          VPM_ID="${DOMAIN_REVERSED}.${REPO_NAME}.vpm"
+
+          SHA256=$(sha256sum "$ZIPNAME" | awk '{print $1}')
+
+          # vpm.jsonがなければ初期化
+          if [ ! -f vpm.json ]; then
+            echo '{"name":"'$REPO_NAME'","id":"'$VPM_ID'","url":"'$REPOURL'","author":"'$AUTHOR_NAME'","packages":{}}' > vpm.json
+          fi
+
+          jq \
+            --arg zipSHA256 "$SHA256" \
+            --arg url "$ZIPURL" \
+            '. + {zipSHA256: $zipSHA256, url: $url}' package.json > package.vpm.json
+
+          jq --slurpfile new package.vpm.json '
+            .packages[$new[0].name].versions |= (
+              {
+                ($new[0].version): $new[0]
+              } + .
+            )
+          ' vpm.json > vpm.json.tmp
+
+          mv vpm.json.tmp vpm.json
+
+      - name: Commit and push vpm.json
+        run: |
+          VERSION=$(jq -r .version package.json)
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add vpm.json
+          git commit -m "Update vpm.json for version $VERSION" || echo "No changes to commit"
+          git push origin gh-pages
